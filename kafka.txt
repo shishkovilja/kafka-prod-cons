@@ -1,0 +1,20 @@
+jps | grep -E "Kafka|QuorumPeerMain" | cut -d " " -f 1 | xargs kill -9
+sleep 1
+jps
+rm -rf /tmp/kafka* && rm -rf /tmp/zookeeper/
+
+sleep 1
+nohup bin/zookeeper-server-start.sh config/zookeeper.properties > ~/zookeeper.out &
+sleep 5
+nohup bin/kafka-server-start.sh config/server.properties > ~/kafka.out &
+sleep 3
+jps
+
+
+bin/kafka-topics.sh --delete --topic test --bootstrap-server localhost:9092
+
+bin/kafka-topics.sh --create --partitions 1 --replication-factor 1 --config max.message.bytes=524288000  --topic test --bootstrap-server localhost:9092
+bin/kafka-topics.sh --describe --topic test --bootstrap-server localhost:9092
+
+
+bin/kafka-consumer-groups.sh --describe --all-groups --bootstrap-server localhost:9092
