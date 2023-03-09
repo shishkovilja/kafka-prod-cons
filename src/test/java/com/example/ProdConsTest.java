@@ -1,7 +1,7 @@
 package com.example;
 
 import java.time.Duration;
-import java.util.List;
+import java.util.Collections;
 import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.Future;
@@ -71,14 +71,14 @@ public class ProdConsTest {
 
         admin = KafkaAdminClient.create(adminProps);
 
-        admin.createTopics(List.of(new NewTopic(TOPIC, 1, (short)1)));
+        admin.createTopics(Collections.singleton(new NewTopic(TOPIC, 1, (short)1)));
     }
 
     /** */
     @After
     @SuppressWarnings("BusyWait")
     public void afterTest() throws Exception {
-        admin.deleteTopics(List.of(TOPIC));
+        admin.deleteTopics(Collections.singleton(TOPIC));
 
         do {
             Thread.sleep(500);
@@ -136,7 +136,7 @@ public class ProdConsTest {
         try (KafkaConsumer<Long, Long> consumer = consumer(); KafkaProducer<Long, Long> producer = producer()) {
             log.info(logMarker, ">>>>>> Assigning partition");
 
-            consumer.assign(List.of(new TopicPartition(TOPIC, 0)));
+            consumer.assign(Collections.singleton(new TopicPartition(TOPIC, 0)));
 
             AtomicLong keyVal = new AtomicLong();
             long receivedCnt = 0;
