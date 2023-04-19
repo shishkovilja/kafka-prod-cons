@@ -6,7 +6,7 @@
         </Console>
 
         <RollingFile name="File" fileName="logs/test-${date:yyyy-MM-dd_HH-mm-ss}.log"
-                     filePattern="test-%i-%d{yyyy-MM-dd}.log.gz">
+                     filePattern="logs/test-%i-%d{yyyy-MM-dd}.log.gz">
             <PatternLayout pattern="[%d{ISO8601}][%-5p][%t][%c{1}]%notEmpty{[%markerSimpleName]} %m%n"/>
             <Policies>
                 <TimeBasedTriggeringPolicy interval="6" modulate="true" />
