@@ -10,8 +10,11 @@ import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.slf4j.LoggerFactory;
 
+import static com.example.ConsumerAction.COMMIT;
+import static com.example.ConsumerAction.POLL;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 /**
@@ -47,8 +50,8 @@ public class KafkaConsumerToxicTest extends KafkaToxicTestBase {
             startDelays();
 
             // Poll is not failing.
-            if (action == ConsumerAction.POLL)
-                ConsumerAction.POLL.accept(cnsmr, timeout);
+            if (action == POLL)
+                POLL.accept(cnsmr, timeout);
             else {
                 assertThrows(org.apache.kafka.common.errors.TimeoutException.class,
                     () -> action.accept(cnsmr, timeout));
@@ -59,6 +62,31 @@ public class KafkaConsumerToxicTest extends KafkaToxicTestBase {
             }
 
             log.info(">>>>>> After action");
+        }
+    }
+
+    /** */
+    @ParameterizedTest(name = "timeout={0}")
+    @ValueSource(longs = {HALF_TIMEOUT, TIMEOUT + HALF_TIMEOUT, TIMEOUT * 2 + HALF_TIMEOUT,
+        TOTAL_TIMEOUT + HALF_TIMEOUT})
+    @Timeout(TEST_TIMEOUT)
+    public void pollWithDelay_thenCommit(long timeout) throws Exception {
+        log.info(">>>>>> Start consumer");
+
+        try (var cnsmr = new KafkaConsumer<Long, Long>(consumerProperties())) {
+            cnsmr.subscribe(List.of(TOPIC));
+
+            startDelays();
+
+            log.info(">>>>>> Before poll");
+            POLL.accept(cnsmr, timeout);
+            log.info(">>>>>> After poll");
+
+            stopDelays();
+
+            log.info(">>>>>> Before commit");
+            COMMIT.accept(cnsmr, timeout);
+            log.info(">>>>>> After commit");
         }
     }
 }
