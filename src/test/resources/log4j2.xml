@@ -5,17 +5,35 @@
             <PatternLayout pattern="[%d{ISO8601}][%-5p][%t][%c{1}]%notEmpty{[%markerSimpleName]} %m%n"/>
         </Console>
 
-        <RollingFile name="File" fileName="logs/test-${date:yyyy-MM-dd_HH-mm-ss}.log"
-                     filePattern="logs/test-%i-%d{yyyy-MM-dd}.log.gz">
-            <PatternLayout pattern="[%d{ISO8601}][%-5p][%t][%c{1}]%notEmpty{[%markerSimpleName]} %m%n"/>
-            <Policies>
-                <TimeBasedTriggeringPolicy interval="6" modulate="true" />
-                <SizeBasedTriggeringPolicy size="30 MB" />
-            </Policies>
-        </RollingFile>
+        <Routing name="File">
+            <Routes pattern="$${sys:TEST_NAME}">
+                <Route>
+                    <RollingFile name="Rolling-${sys:TEST_NAME}" fileName="logs/${sys:TEST_NAME}-${date:yyyy-MM-dd_HH-mm-ss}.log"
+                                 filePattern="logs/${sys:TEST_NAME}-%i-%d{yyyy-MM-dd}.log.gz">
+                        <PatternLayout pattern="[%d{ISO8601}][%-5p][%t][%c{1}]%notEmpty{[%markerSimpleName]} %m%n"/>
+                        <Policies>
+                            <TimeBasedTriggeringPolicy interval="6" modulate="true" />
+                            <SizeBasedTriggeringPolicy size="30 MB" />
+                        </Policies>
+                    </RollingFile>
+                </Route>
+
+                <Route key="$${sys:TEST_NAME}">
+                    <RollingFile name="Rolling-default" fileName="logs/default-${date:yyyy-MM-dd_HH-mm-ss}.log"
+                                 filePattern="logs/default-%i-%d{yyyy-MM-dd}.log.gz">
+                        <PatternLayout pattern="[%d{ISO8601}][%-5p][%t][%c{1}]%notEmpty{[%markerSimpleName]} %m%n"/>
+                        <Policies>
+                            <TimeBasedTriggeringPolicy interval="6" modulate="true" />
+                            <SizeBasedTriggeringPolicy size="30 MB" />
+                        </Policies>
+                    </RollingFile>
+                </Route>
+            </Routes>
+        </Routing>
     </Appenders>
     <Loggers>
         <Logger name="org.apache.kafka" level="debug" additivity="false">
+<!--        <Logger name="org.apache.kafka" level="debug" additivity="false">-->
             <AppenderRef ref="File"/>
         </Logger>
 
