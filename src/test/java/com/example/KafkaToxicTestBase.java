@@ -162,6 +162,7 @@ public abstract class KafkaToxicTestBase {
         props.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, LongSerializer.class.getName());
 
         props.put(ProducerConfig.REQUEST_TIMEOUT_MS_CONFIG, TIMEOUT);
+        props.put(ProducerConfig.MAX_BLOCK_MS_CONFIG, TIMEOUT * 2);
         props.put(ProducerConfig.DELIVERY_TIMEOUT_MS_CONFIG, TOTAL_TIMEOUT);
 
         return props;

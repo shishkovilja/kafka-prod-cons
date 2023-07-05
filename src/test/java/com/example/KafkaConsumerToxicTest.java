@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
+import org.apache.kafka.common.errors.TimeoutException;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
@@ -13,7 +14,8 @@ import org.junit.jupiter.params.provider.MethodSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.slf4j.LoggerFactory;
 
-import static com.example.ConsumerAction.COMMIT;
+import static com.example.ConsumerAction.COMMIT_ASYNC;
+import static com.example.ConsumerAction.COMMIT_SYNC;
 import static com.example.ConsumerAction.POLL;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
@@ -44,17 +46,18 @@ public class KafkaConsumerToxicTest extends KafkaToxicTestBase {
             cnsmr.subscribe(List.of(TOPIC));
 
             // Necessary before commit.
-            if (action == ConsumerAction.COMMIT)
+            if (action == COMMIT_ASYNC || action == COMMIT_SYNC)
                 cnsmr.poll(Duration.ofMillis(1000));
 
             startDelays();
 
-            // Poll is not failing.
-            if (action == POLL)
-                POLL.accept(cnsmr, timeout);
+            // Poll and async commit are not failing.
+            if (action == POLL || action == COMMIT_ASYNC)
+                action.accept(cnsmr, timeout);
             else {
-                assertThrows(org.apache.kafka.common.errors.TimeoutException.class,
-                    () -> action.accept(cnsmr, timeout));
+                TimeoutException ex = assertThrows(TimeoutException.class, () -> action.accept(cnsmr, timeout));
+
+                log.info(">>>>>> Expected exception was thrown: ", ex);
 
                 stopDelays();
 
@@ -85,7 +88,7 @@ public class KafkaConsumerToxicTest extends KafkaToxicTestBase {
             stopDelays();
 
             log.info(">>>>>> Before commit");
-            COMMIT.accept(cnsmr, timeout);
+            COMMIT_SYNC.accept(cnsmr, timeout);
             log.info(">>>>>> After commit");
         }
     }

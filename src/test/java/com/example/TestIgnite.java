@@ -26,7 +26,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  *
  */
-@SuppressWarnings({"resource", "deprecation"}) @Testcontainers
+@SuppressWarnings({"resource", "deprecation"})
+@Testcontainers
 public class TestIgnite {
     /** */
     private static final Logger log = LoggerFactory.getLogger(TestIgnite.class);
@@ -52,7 +53,7 @@ public class TestIgnite {
 
     /** */
     @Test
-    void testIngniteShutdown() throws Exception {
+    void testLoadOnIgniteShutdown() throws Exception {
         IgniteClient client = Ignition.startClient(new ClientConfiguration().setAddresses(
             ignite1.getHost() + ':' + ignite1.getMappedPort(10800),
             ignite0.getHost() + ':' + ignite0.getMappedPort(10800)));

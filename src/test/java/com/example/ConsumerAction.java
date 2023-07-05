@@ -1,6 +1,9 @@
 package com.example;
 
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiConsumer;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.common.TopicPartition;
@@ -15,8 +18,34 @@ public enum ConsumerAction {
     /** Poll. */
     POLL((cnsmr, t) -> cnsmr.poll(ofMillis(t))),
 
-    /** Commit. */
-    COMMIT((cnsmr, t) -> cnsmr.commitSync(ofMillis(t))),
+    /** Commit sync. */
+    COMMIT_SYNC((cnsmr, t) -> cnsmr.commitSync(ofMillis(t))),
+
+    /** Commit sync. */
+    COMMIT_ASYNC((cnsmr, t) -> {
+        CountDownLatch latch = new CountDownLatch(1);
+
+        AtomicReference<RuntimeException> err = new AtomicReference<>();
+
+        cnsmr.commitAsync((m, e) -> {
+            if (e != null)
+                err.set(new RuntimeException(e));
+
+            latch.countDown();
+        });
+
+        boolean isDone;
+
+        try {
+            isDone = latch.await(t * 2, TimeUnit.MILLISECONDS);
+        }
+        catch (InterruptedException e) {
+            throw new RuntimeException(e);
+        }
+
+        if (!isDone && err.get() != null)
+            throw err.get();
+    }),
 
     /** Partitions. */
     PARTITIONS((cnsmr, t) -> cnsmr.partitionsFor(TOPIC, ofMillis(t))),

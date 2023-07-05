@@ -9,6 +9,7 @@ import org.apache.kafka.clients.producer.KafkaProducer;
 import org.apache.kafka.clients.producer.ProducerRecord;
 import org.apache.kafka.clients.producer.RecordMetadata;
 import org.junit.jupiter.api.Timeout;
+import org.junit.jupiter.api.function.Executable;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.slf4j.LoggerFactory;
@@ -43,19 +44,28 @@ public class KafkaProducerToxicTest extends KafkaToxicTestBase {
 
             startDelays();
 
-            Class<? extends Exception> cls = timeout > TOTAL_TIMEOUT ? ExecutionException.class
-                : TimeoutException.class;
+            boolean isTotalTimeout = timeout == TOTAL_TIMEOUT + HALF_TIMEOUT;
 
-            Exception ex = assertThrows(cls, () -> send(producer, val, timeout));
+            Class<? extends Exception> cls = isTotalTimeout ? ExecutionException.class : TimeoutException.class;
 
-            if (ex instanceof ExecutionException)
+            Executable executable = isTotalTimeout ? () -> send(producer, val, -1) : () -> send(producer, val, timeout);
+
+            long start = System.currentTimeMillis();
+            Exception ex = assertThrows(cls, executable);
+            long execTime = System.currentTimeMillis() - start;
+
+            log.info(">>>>>> Execution time: " + execTime);
+
+            if (ex instanceof ExecutionException) {
                 assertTrue(ex.getCause() instanceof org.apache.kafka.common.errors.TimeoutException);
+                assertTrue(execTime < timeout);
+            }
 
             log.info(">>>>>> Expected exception occurred:", ex);
 
             stopDelays();
 
-            send(producer, val, timeout);
+            send(producer, val, isTotalTimeout ? -1 : timeout);
         }
     }
 
@@ -65,7 +75,10 @@ public class KafkaProducerToxicTest extends KafkaToxicTestBase {
 
         Future<RecordMetadata> fut = producer.send(new ProducerRecord<>(TOPIC, keyVal.get(), keyVal.get()));
 
-        fut.get(timeout, MILLISECONDS);
+        if (timeout < 0)
+            fut.get();
+        else
+            fut.get(timeout, MILLISECONDS);
 
         log.info(">>>>>> keyVal={} was successfully sent", keyVal);
     }
