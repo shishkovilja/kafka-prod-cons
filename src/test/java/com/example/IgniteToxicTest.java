@@ -97,7 +97,7 @@ public class IgniteToxicTest {
                     .withNetwork(NET);
 
     /** Ignite image version. */
-    private static final String IGNITE_IMAGE = "apacheignite/ignite:2.12.0";
+    private static final String IGNITE_IMAGE = "apacheignite/ignite:2.14.0";
 
     /**
      * Cache loading threads count.
@@ -229,7 +229,7 @@ public class IgniteToxicTest {
         log.warn(">>>>>> After puts (putsCnt=" + putsCnt.get() + "). Expiration will start soon...");
 
         // Thin protocol bandwidth limited 100kB/sec -> increase in order to prevent node failure
-        proxy.toxics().bandwidth("toxicIgniteDown", ToxicDirection.DOWNSTREAM, 100);
+        proxy.toxics().bandwidth("toxicIgniteDown", ToxicDirection.DOWNSTREAM, 10);
 
         // Waiting CQ to be processed
         while (true) {
