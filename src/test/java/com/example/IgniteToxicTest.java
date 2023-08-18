@@ -19,6 +19,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.testcontainers.containers.BindMode;
 import org.testcontainers.containers.FixedHostPortGenericContainer;
+import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.Network;
 import org.testcontainers.containers.output.Slf4jLogConsumer;
 import org.testcontainers.containers.wait.strategy.Wait;
@@ -76,9 +77,6 @@ public class IgniteToxicTest {
     /** Thin port. */
     private static final int THIN_PORT = 10800;
 
-    /** Good thin port. */
-    public static final int GOOD_THIN_PORT = THIN_PORT + 1;
-
     /** Toxic thin port for slow clients. */
     private static final Integer TOXIC_THIN_PORT = 11800;
 
@@ -94,10 +92,11 @@ public class IgniteToxicTest {
             new FixedHostPortGenericContainer<>("ghcr.io/shopify/toxiproxy:2.5.0")
                     .withFixedExposedPort(TOXIPROXY_CONTROL_PORT, TOXIPROXY_CONTROL_PORT)
                     .withFixedExposedPort(TOXIC_THIN_PORT, TOXIC_THIN_PORT)
+                    .withFixedExposedPort(TOXIC_THIN_PORT + 1, TOXIC_THIN_PORT + 1)
                     .withNetwork(NET);
 
     /** Ignite image version. */
-    private static final String IGNITE_IMAGE = "apacheignite/ignite:2.14.0";
+    private static final String IGNITE_IMAGE = "apacheignite/ignite:2.15.0";
 
     /**
      * Cache loading threads count.
@@ -109,8 +108,9 @@ public class IgniteToxicTest {
 
     /** */
     @Container
-    private final FixedHostPortGenericContainer<?> toxicIgnite = new FixedHostPortGenericContainer<>(IGNITE_IMAGE)
-            .withFixedExposedPort(THIN_PORT, THIN_PORT)
+    private final GenericContainer<?> toxicIgnite = new GenericContainer<>(IGNITE_IMAGE)
+            .withNetworkAliases("toxicIgnite")
+            .withExposedPorts(THIN_PORT)
             .withNetwork(NET)
             .withClasspathResourceMapping("config.xml", "/config.xml", BindMode.READ_ONLY)
             .withFileSystemBind("work", "/work", BindMode.READ_WRITE)
@@ -118,14 +118,13 @@ public class IgniteToxicTest {
             .withEnv(asMap("JVM_OPTS", IGNITE_JVM_OPTS,
                     "CONFIG_URI", "/config.xml",
                     "IGNITE_WORK_DIR", "/work"))
-            .withNetworkAliases("toxicIgnite")
             .withLogConsumer(new Slf4jLogConsumer(log));
 
     /** */
     @Container
-    private final FixedHostPortGenericContainer<?> goodIgnite =
-            new FixedHostPortGenericContainer<>(IGNITE_IMAGE)
-                    .withFixedExposedPort(GOOD_THIN_PORT, THIN_PORT)
+    private final GenericContainer<?> goodIgnite = new GenericContainer<>(IGNITE_IMAGE)
+                    .withNetworkAliases("goodIgnite")
+                    .withExposedPorts(THIN_PORT)
                     .withNetwork(NET)
                     .withClasspathResourceMapping("config.xml", "/config.xml", BindMode.READ_ONLY)
                     .withFileSystemBind("work", "/work", BindMode.READ_WRITE)
@@ -139,9 +138,8 @@ public class IgniteToxicTest {
 
     /** */
     @Container
-    private final FixedHostPortGenericContainer<?> otherGoodIgnite =
-            new FixedHostPortGenericContainer<>(IGNITE_IMAGE)
-                    .withFixedExposedPort(GOOD_THIN_PORT + 1, THIN_PORT)
+    private final GenericContainer<?> otherGoodIgnite = new GenericContainer<>(IGNITE_IMAGE)
+                    .withExposedPorts(THIN_PORT)
                     .withNetwork(NET)
                     .withClasspathResourceMapping("config.xml", "/config.xml", BindMode.READ_ONLY)
                     .withFileSystemBind("work", "/work", BindMode.READ_WRITE)
@@ -176,12 +174,15 @@ public class IgniteToxicTest {
     protected static void beforeAll() throws Exception {
         ToxiproxyClient toxiproxyClient = new ToxiproxyClient(TOXI_PROXY.getHost(), TOXIPROXY_CONTROL_PORT);
         proxy = toxiproxyClient.createProxy("toxicIgnite", "0.0.0.0:" + TOXIC_THIN_PORT, "toxicIgnite:" + THIN_PORT);
+
+        // Good proxy
+        toxiproxyClient.createProxy("goodIgnite", "0.0.0.0:" + (TOXIC_THIN_PORT + 1), "goodIgnite:" + THIN_PORT);
     }
 
     /** */
     @BeforeEach
     public void before() {
-        goodClient = igniteClient(goodIgnite.getHost(), GOOD_THIN_PORT);
+        goodClient = igniteClient(goodIgnite.getHost(), TOXIC_THIN_PORT + 1);
 
         while (goodClient.cluster().nodes().size() < 3) {
             try {
@@ -197,7 +198,7 @@ public class IgniteToxicTest {
 
         putLatch = new CountDownLatch(CACHE_LOADING_THREADS_CNT);
 
-        expiryMoment = System.currentTimeMillis() + 30_000;
+        expiryMoment = System.currentTimeMillis() + 60_000;
 
         putFuts = range(0, CACHE_LOADING_THREADS_CNT)
                 .mapToObj(i -> startCacheLoading(goodClient, putsCnt, putLatch))
@@ -206,10 +207,7 @@ public class IgniteToxicTest {
 
     /** */
     @AfterEach
-    public void after() throws ExecutionException, InterruptedException {
-        for (CompletableFuture<?> completableFuture : putFuts)
-            completableFuture.get();
-
+    public void after() {
         goodClient.close();
     }
 
@@ -224,9 +222,7 @@ public class IgniteToxicTest {
                         .cache(TEST_CACHE)
                         .query(query(listenerFinishedCnt)));
 
-        // Waiting puts be processed
-        assertTrue(putLatch.await(TEST_TIMEOUT, SECONDS), "Puts not finished");
-        log.warn(">>>>>> After puts (putsCnt=" + putsCnt.get() + "). Expiration will start soon...");
+        waitForPuts();
 
         // Thin protocol bandwidth limited 100kB/sec -> increase in order to prevent node failure
         proxy.toxics().bandwidth("toxicIgniteDown", ToxicDirection.DOWNSTREAM, 10);
@@ -247,6 +243,18 @@ public class IgniteToxicTest {
             if (cnt >= SLOW_CLIENTS_CNT * putsCnt.get())
                 break;
         }
+    }
+
+    /**
+     *
+     */
+    private void waitForPuts() throws InterruptedException, ExecutionException {
+        assertTrue(putLatch.await(TEST_TIMEOUT, SECONDS), "Puts not finished");
+
+        for (CompletableFuture<?> completableFuture : putFuts)
+            completableFuture.get();
+
+        log.warn(">>>>>> After puts (putsCnt=" + putsCnt.get() + "). Expiration will start soon...");
     }
 
     /**
