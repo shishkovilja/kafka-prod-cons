@@ -1,10 +1,7 @@
 package com.example;
 
-import java.util.Map;
-import java.util.UUID;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.atomic.AtomicLong;
 import org.apache.ignite.Ignition;
+import org.apache.ignite.client.ClientCache;
 import org.apache.ignite.client.ClientCacheConfiguration;
 import org.apache.ignite.client.ClientConnectionException;
 import org.apache.ignite.client.IgniteClient;
@@ -18,8 +15,13 @@ import org.testcontainers.containers.wait.strategy.Wait;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
+import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.atomic.AtomicLong;
+
 import static org.apache.ignite.cache.CachePeekMode.PRIMARY;
 import static org.apache.ignite.configuration.IgniteConfiguration.DFLT_FAILURE_DETECTION_TIMEOUT;
+import static org.apache.ignite.internal.util.lang.GridFunc.asMap;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -39,14 +41,14 @@ public class TestIgnite {
     @Container
     private final FixedHostPortGenericContainer<?> ignite0 = new FixedHostPortGenericContainer<>("apacheignite/ignite")
         .withFixedExposedPort(10800, 10800)
-        .withEnv(Map.of("JVM_OPTS", "-DIGNITE_QUIET=false"))
+        .withEnv(asMap("JVM_OPTS", "-DIGNITE_QUIET=false"))
         .withLogConsumer(new Slf4jLogConsumer(log));
 
     /** */
     @Container
     private final FixedHostPortGenericContainer<?> ignite1 = new FixedHostPortGenericContainer<>("apacheignite/ignite")
         .withFixedExposedPort(10801, 10800)
-        .withEnv(Map.of("JVM_OPTS", "-DIGNITE_QUIET=false"))
+        .withEnv(asMap("JVM_OPTS", "-DIGNITE_QUIET=false"))
         .withLogConsumer(new Slf4jLogConsumer(log))
         .dependsOn(ignite0)
         .waitingFor(Wait.forLogMessage(".+Topology snapshot.+", 1));
@@ -62,12 +64,12 @@ public class TestIgnite {
 
         AtomicLong errors = new AtomicLong();
 
-        var fut = startCacheLoading(client, errors);
+        CompletableFuture<?> fut = startCacheLoading(client, errors);
 
         // Waiting, that puts performed
         Thread.sleep(1000);
 
-        var cache = client.cache(TEST_CACHE);
+        ClientCache<Object, Object> cache = client.cache(TEST_CACHE);
         long curSize = 0;
 
         // Check for errors and increased size
@@ -99,9 +101,9 @@ public class TestIgnite {
     /** */
     @SuppressWarnings("BusyWait")
     private static CompletableFuture<?> startCacheLoading(IgniteClient client, AtomicLong errors) {
-        var cache = client.getOrCreateCache(new ClientCacheConfiguration()
-            .setName(TEST_CACHE)
-            .setBackups(1));
+        ClientCache<Object, Object> cache = client.getOrCreateCache(new ClientCacheConfiguration()
+                .setName(TEST_CACHE)
+                .setBackups(1));
 
         return CompletableFuture.runAsync(() -> {
             while (!Thread.currentThread().isInterrupted()) {

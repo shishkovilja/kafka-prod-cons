@@ -1,10 +1,5 @@
 package com.example;
 
-import java.time.Duration;
-import java.util.Arrays;
-import java.util.List;
-import java.util.stream.IntStream;
-import java.util.stream.Stream;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.common.errors.TimeoutException;
 import org.junit.jupiter.api.Timeout;
@@ -14,9 +9,13 @@ import org.junit.jupiter.params.provider.MethodSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.slf4j.LoggerFactory;
 
-import static com.example.ConsumerAction.COMMIT_ASYNC;
-import static com.example.ConsumerAction.COMMIT_SYNC;
-import static com.example.ConsumerAction.POLL;
+import java.time.Duration;
+import java.util.Arrays;
+import java.util.stream.IntStream;
+import java.util.stream.Stream;
+
+import static com.example.ConsumerAction.*;
+import static java.util.Collections.singletonList;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 /**
@@ -42,8 +41,8 @@ public class KafkaConsumerToxicTest extends KafkaToxicTestBase {
     public void testTimeout(ConsumerAction action, long timeout) throws Exception {
         log.info(">>>>>> Start consumer");
 
-        try (var cnsmr = new KafkaConsumer<Long, Long>(consumerProperties())) {
-            cnsmr.subscribe(List.of(TOPIC));
+        try (KafkaConsumer<Long, Long> cnsmr = new KafkaConsumer<>(consumerProperties())) {
+            cnsmr.subscribe(singletonList(TOPIC));
 
             // Necessary before commit.
             if (action == COMMIT_ASYNC || action == COMMIT_SYNC)
@@ -76,8 +75,8 @@ public class KafkaConsumerToxicTest extends KafkaToxicTestBase {
     public void pollWithDelay_thenCommit(long timeout) throws Exception {
         log.info(">>>>>> Start consumer");
 
-        try (var cnsmr = new KafkaConsumer<Long, Long>(consumerProperties())) {
-            cnsmr.subscribe(List.of(TOPIC));
+        try (KafkaConsumer<Long, Long> cnsmr = new KafkaConsumer<>(consumerProperties())) {
+            cnsmr.subscribe(singletonList(TOPIC));
 
             startDelays();
 

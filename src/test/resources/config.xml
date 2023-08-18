@@ -27,26 +27,23 @@ http://www.springframework.org/schema/beans ">
         Alter configuration below as needed.
     -->
     <bean id="grid.cfg" class="org.apache.ignite.configuration.IgniteConfiguration">
-        <property name="discoverySpi">
-            <bean class="org.apache.ignite.spi.discovery.tcp.TcpDiscoverySpi">
-                <property name="ipFinder">
-                    <bean class="org.apache.ignite.spi.discovery.tcp.ipfinder.vm.TcpDiscoveryVmIpFinder">
-                        <property name="addresses">
-                            <list>
-                                <value>172.17.0.1:47500</value>
-                                <value>172.17.0.2:47500</value>
-                                <value>172.17.0.3:47500</value>
-                                <value>172.17.0.4:47500</value>
-                                <value>172.17.0.5:47500</value>
-                                <value>172.17.0.6:47500</value>
-                                <value>172.17.0.7:47500</value>
-                                <value>172.17.0.8:47500</value>
-                                <value>172.17.0.9:47500</value>
-                                <value>172.17.0.10:47500</value>
-                            </list>
-                        </property>
+        <property name="peerClassLoadingEnabled" value="true"/>
+
+        <property name="metricsLogFrequency" value="20000"/>
+
+        <property name="cacheConfiguration">
+            <bean class="org.apache.ignite.configuration.CacheConfiguration">
+                <property name="name" value="test_cache"/>
+                <property name="cacheMode" value="PARTITIONED"/>
+                <property name="backups" value="1"/>
+                <property name="writeSynchronizationMode" value="FULL_SYNC"/>
+                <property name="atomicityMode" value="TRANSACTIONAL"/>
+                <property name="affinity">
+                    <bean class="org.apache.ignite.cache.affinity.rendezvous.RendezvousAffinityFunction">
+                        <property name="partitions" value="1024"/>
                     </bean>
                 </property>
+                <property name="eagerTtl" value="true"/>
             </bean>
         </property>
     </bean>

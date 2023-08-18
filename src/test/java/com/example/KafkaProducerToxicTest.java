@@ -37,7 +37,7 @@ public class KafkaProducerToxicTest extends KafkaToxicTestBase {
 
         Properties props = producerProperties();
 
-        try (var producer = new KafkaProducer<Long, Long>(props)) {
+        try (KafkaProducer<Long, Long> producer = new KafkaProducer<>(props)) {
             AtomicLong val = new AtomicLong();
 
             send(producer, val, TOTAL_TIMEOUT);

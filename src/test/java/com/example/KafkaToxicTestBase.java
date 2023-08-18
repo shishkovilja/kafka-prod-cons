@@ -1,10 +1,5 @@
 package com.example;
 
-import java.io.IOException;
-import java.lang.reflect.Method;
-import java.util.Collections;
-import java.util.Properties;
-import java.util.UUID;
 import eu.rekawek.toxiproxy.Proxy;
 import eu.rekawek.toxiproxy.ToxiproxyClient;
 import eu.rekawek.toxiproxy.model.Toxic;
@@ -28,6 +23,12 @@ import org.testcontainers.containers.Network;
 import org.testcontainers.containers.ToxiproxyContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
+
+import java.io.IOException;
+import java.lang.reflect.Method;
+import java.util.Collections;
+import java.util.Properties;
+import java.util.UUID;
 
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
 import static org.testcontainers.utility.DockerImageName.parse;
@@ -109,13 +110,13 @@ public abstract class KafkaToxicTestBase {
     /** */
     @BeforeEach
     void setUp(TestInfo testInfo) {
-        var testCls = testInfo.getTestClass()
-            .orElse(KafkaToxicTestBase.class)
-            .getSimpleName();
+        String testCls = testInfo.getTestClass()
+                .orElse(KafkaToxicTestBase.class)
+                .getSimpleName();
 
-        var testMethod = testInfo.getTestMethod()
-            .map(Method::getName)
-            .orElse("");
+        String testMethod = testInfo.getTestMethod()
+                .map(Method::getName)
+                .orElse("");
 
         String displayName = testInfo.getDisplayName().replace('=', '_');
 

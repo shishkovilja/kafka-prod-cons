@@ -34,3 +34,4 @@ target/
 
 # Ignite work directories
 /ignitop-integration-tests/ignite/
+/work
