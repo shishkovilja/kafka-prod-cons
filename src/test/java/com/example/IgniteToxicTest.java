@@ -96,7 +96,7 @@ public class IgniteToxicTest {
                     .withNetwork(NET);
 
     /** Ignite image version. */
-    private static final String IGNITE_IMAGE = "apacheignite/ignite:2.15.0";
+    private static final String IGNITE_IMAGE = "apacheignite/ignite:2.14.0";
 
     /**
      * Cache loading threads count.
