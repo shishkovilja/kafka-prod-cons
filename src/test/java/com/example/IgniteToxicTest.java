@@ -3,6 +3,7 @@ package com.example;
 import com.example.expiry.ExpiredFilterFactory;
 import eu.rekawek.toxiproxy.Proxy;
 import eu.rekawek.toxiproxy.ToxiproxyClient;
+import eu.rekawek.toxiproxy.model.Toxic;
 import eu.rekawek.toxiproxy.model.ToxicDirection;
 import org.apache.ignite.Ignition;
 import org.apache.ignite.cache.query.ContinuousQuery;
@@ -31,6 +32,7 @@ import javax.cache.event.CacheEntryListenerException;
 import javax.cache.event.CacheEntryUpdatedListener;
 import javax.cache.expiry.CreatedExpiryPolicy;
 import javax.cache.expiry.Duration;
+import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
@@ -48,13 +50,14 @@ import static org.junit.jupiter.api.Assertions.*;
 /**
  *
  */
-@SuppressWarnings({"resource", "deprecation"})
+@SuppressWarnings({"resource", "deprecation", "BusyWait"})
 @Testcontainers
 public class IgniteToxicTest {
-    /**
-     *
-     */
+    /** */
     private static final Logger log = LoggerFactory.getLogger(IgniteToxicTest.class);
+
+    /** Empty string. */
+    private static final String[] EMPTY_STRING = new String[0];
 
     /** Test timeout. */
     public static final int TEST_TIMEOUT = 600;
@@ -93,6 +96,7 @@ public class IgniteToxicTest {
                     .withFixedExposedPort(TOXIPROXY_CONTROL_PORT, TOXIPROXY_CONTROL_PORT)
                     .withFixedExposedPort(TOXIC_THIN_PORT, TOXIC_THIN_PORT)
                     .withFixedExposedPort(TOXIC_THIN_PORT + 1, TOXIC_THIN_PORT + 1)
+                    .withFixedExposedPort(TOXIC_THIN_PORT + 2, TOXIC_THIN_PORT + 2)
                     .withNetwork(NET);
 
     /** Ignite image version. */
@@ -103,59 +107,33 @@ public class IgniteToxicTest {
      */
     private static final int CACHE_LOADING_THREADS_CNT = 20;
 
+    /** Cache loading duration. */
+    private static final int CACHE_LOADING_DURATION = 60_000;
+
     /** Slow clients count. */
     private static final int SLOW_CLIENTS_CNT = 1;
 
-    /** */
-    @Container
-    private final GenericContainer<?> toxicIgnite = new GenericContainer<>(IGNITE_IMAGE)
-            .withNetworkAliases("toxicIgnite")
-            .withExposedPorts(THIN_PORT)
-            .withNetwork(NET)
-            .withClasspathResourceMapping("config.xml", "/config.xml", BindMode.READ_ONLY)
-            .withFileSystemBind("work", "/work", BindMode.READ_WRITE)
-            .withFileSystemBind("target", "/opt/ignite/apache-ignite/libs/user_libs", BindMode.READ_WRITE)
-            .withEnv(asMap("JVM_OPTS", IGNITE_JVM_OPTS,
-                    "CONFIG_URI", "/config.xml",
-                    "IGNITE_WORK_DIR", "/work"))
-            .withLogConsumer(new Slf4jLogConsumer(log));
+    /** Proxies. */
+    private static List<Proxy> proxies;
 
     /** */
     @Container
-    private final GenericContainer<?> goodIgnite = new GenericContainer<>(IGNITE_IMAGE)
-                    .withNetworkAliases("goodIgnite")
-                    .withExposedPorts(THIN_PORT)
-                    .withNetwork(NET)
-                    .withClasspathResourceMapping("config.xml", "/config.xml", BindMode.READ_ONLY)
-                    .withFileSystemBind("work", "/work", BindMode.READ_WRITE)
-                    .withFileSystemBind("target", "/opt/ignite/apache-ignite/libs/user_libs", BindMode.READ_WRITE)
-                    .withEnv(asMap("JVM_OPTS", IGNITE_JVM_OPTS,
-                            "CONFIG_URI", "/config.xml",
-                            "IGNITE_WORK_DIR", "/work"))
-                    .withLogConsumer(new Slf4jLogConsumer(log))
-                    .dependsOn(toxicIgnite)
+    private final GenericContainer<?> toxicIgnite0 = igniteContainer(0);
+
+    /** */
+    @Container
+    private final GenericContainer<?> toxicIgnite1 = igniteContainer(1)
+                    .dependsOn(toxicIgnite0)
                     .waitingFor(Wait.forLogMessage(".+Topology snapshot.+", 1));
 
     /** */
     @Container
-    private final GenericContainer<?> otherGoodIgnite = new GenericContainer<>(IGNITE_IMAGE)
-                    .withExposedPorts(THIN_PORT)
-                    .withNetwork(NET)
-                    .withClasspathResourceMapping("config.xml", "/config.xml", BindMode.READ_ONLY)
-                    .withFileSystemBind("work", "/work", BindMode.READ_WRITE)
-                    .withFileSystemBind("target", "/opt/ignite/apache-ignite/libs/user_libs", BindMode.READ_WRITE)
-                    .withEnv(asMap("JVM_OPTS", IGNITE_JVM_OPTS,
-                            "CONFIG_URI", "/config.xml",
-                            "IGNITE_WORK_DIR", "/work"))
-                    .withLogConsumer(new Slf4jLogConsumer(log))
-                    .dependsOn(toxicIgnite)
-                    .waitingFor(Wait.forLogMessage(".+Topology snapshot.+", 1));
+    private final GenericContainer<?> toxicIgnite2 = igniteContainer(2)
+            .dependsOn(toxicIgnite0)
+            .waitingFor(Wait.forLogMessage(".+Topology snapshot.+", 1));
 
-    /** Proxy. */
-    private static Proxy proxy;
-
-    /** Good client. */
-    private IgniteClient goodClient;
+    /** Cache loader client. */
+    private IgniteClient cacheLdrClient;
 
     /** Put futures. */
     private List<CompletableFuture<?>> putFuts;
@@ -169,22 +147,51 @@ public class IgniteToxicTest {
     /** Puts counter. */
     private AtomicInteger putsCnt;
 
+    /**
+     * @param idx Ignite index.
+     */
+    private static GenericContainer<?> igniteContainer(int idx) {
+        return new GenericContainer<>(IGNITE_IMAGE)
+                .withNetworkAliases("toxicIgnite" + idx)
+                .withExposedPorts(THIN_PORT)
+                .withNetwork(NET)
+                .withClasspathResourceMapping("config.xml", "/config.xml", BindMode.READ_ONLY)
+                .withFileSystemBind("work", "/work", BindMode.READ_WRITE)
+                .withFileSystemBind("target", "/opt/ignite/apache-ignite/libs/user_libs", BindMode.READ_WRITE)
+                .withEnv(asMap("JVM_OPTS", IGNITE_JVM_OPTS,
+                        "CONFIG_URI", "/config.xml",
+                        "IGNITE_WORK_DIR", "/work"))
+                .withLogConsumer(new Slf4jLogConsumer(log));
+    }
+
     /** */
     @BeforeAll
-    protected static void beforeAll() throws Exception {
+    protected static void beforeAll() {
         ToxiproxyClient toxiproxyClient = new ToxiproxyClient(TOXI_PROXY.getHost(), TOXIPROXY_CONTROL_PORT);
-        proxy = toxiproxyClient.createProxy("toxicIgnite", "0.0.0.0:" + TOXIC_THIN_PORT, "toxicIgnite:" + THIN_PORT);
 
-        // Good proxy
-        toxiproxyClient.createProxy("goodIgnite", "0.0.0.0:" + (TOXIC_THIN_PORT + 1), "goodIgnite:" + THIN_PORT);
+        proxies = range(0, 3)
+                .mapToObj(i -> proxy(toxiproxyClient, i))
+                .collect(Collectors.toList());
+    }
+
+    /** */
+    private static Proxy proxy(ToxiproxyClient toxiproxyClient, int igniteIdx) {
+        try {
+            return toxiproxyClient.createProxy(
+                    "toxicIgnite" + igniteIdx,
+                    "0.0.0.0:" + (TOXIC_THIN_PORT + igniteIdx),
+                    "toxicIgnite" + igniteIdx + ":" + THIN_PORT);
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
     }
 
     /** */
     @BeforeEach
     public void before() {
-        goodClient = igniteClient(goodIgnite.getHost(), TOXIC_THIN_PORT + 1);
+        cacheLdrClient = igniteClient();
 
-        while (goodClient.cluster().nodes().size() < 3) {
+        while (cacheLdrClient.cluster().nodes().size() < 3) {
             try {
                 Thread.sleep(100);
             } catch (InterruptedException e) {
@@ -192,23 +199,28 @@ public class IgniteToxicTest {
             }
         }
 
-        goodClient.cluster().state(ClusterState.ACTIVE);
+        cacheLdrClient.cluster().state(ClusterState.ACTIVE);
 
         putsCnt = new AtomicInteger();
 
         putLatch = new CountDownLatch(CACHE_LOADING_THREADS_CNT);
 
-        expiryMoment = System.currentTimeMillis() + 60_000;
+        expiryMoment = System.currentTimeMillis() + CACHE_LOADING_DURATION;
 
         putFuts = range(0, CACHE_LOADING_THREADS_CNT)
-                .mapToObj(i -> startCacheLoading(goodClient, putsCnt, putLatch))
+                .mapToObj(i -> startCacheLoading(cacheLdrClient, putsCnt, putLatch))
                 .collect(Collectors.toList());
     }
 
     /** */
     @AfterEach
-    public void after() {
-        goodClient.close();
+    public void after() throws Exception {
+        for (Proxy proxy : proxies) {
+            for (Toxic toxic : proxy.toxics().getAll())
+                toxic.remove();
+        }
+
+        cacheLdrClient.close();
     }
 
     /** */
@@ -218,20 +230,20 @@ public class IgniteToxicTest {
         AtomicInteger listenerFinishedCnt = new AtomicInteger();
 
         range(0, SLOW_CLIENTS_CNT).forEach(i ->
-                igniteClient(TOXI_PROXY.getHost(), TOXIC_THIN_PORT)
-                        .cache(TEST_CACHE)
+                igniteClient().cache(TEST_CACHE)
                         .query(query(listenerFinishedCnt)));
 
         waitForPuts();
 
-        // Thin protocol bandwidth limited 100kB/sec -> increase in order to prevent node failure
-        proxy.toxics().bandwidth("toxicIgniteDown", ToxicDirection.DOWNSTREAM, 10);
+        // Thin protocol bandwidth limited 10kB/sec -> increase in order to prevent node failure
+        for (Proxy proxy : proxies)
+            proxy.toxics().bandwidth(proxy.getName() + "-band-down", ToxicDirection.DOWNSTREAM, 10);
 
         // Waiting CQ to be processed
         while (true) {
             Thread.sleep(5000);
 
-            assertEquals(3, goodClient.cluster()
+            assertEquals(3, cacheLdrClient.cluster()
                     .forServers()
                     .nodes()
                     .size(), "Size of cluster should not change");
@@ -286,9 +298,15 @@ public class IgniteToxicTest {
     /**
      *
      */
-    private IgniteClient igniteClient(String host, int port) {
+    private IgniteClient igniteClient() {
+        List<String> addrs = range(0, 3)
+                .mapToObj(i -> TOXI_PROXY.getHost() + ":" + (TOXIC_THIN_PORT + i))
+                .collect(Collectors.toList());
+
+        Collections.shuffle(addrs);
+
         return Ignition.startClient(new ClientConfiguration()
-                .setAddresses(host + ':' + port)
+                .setAddresses(addrs.toArray(EMPTY_STRING))
                 .setPartitionAwarenessEnabled(true)
         );
     }
